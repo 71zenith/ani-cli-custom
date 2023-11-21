@@ -62,9 +62,9 @@ help_info() {
     Update the script
 
 \033[1;34mSome example usages:\033[0m
-  \033[1;32m%s:\033[0m -q 720p banana fish
-  \033[1;32m%s:\033[0m -d -e 2 cyberpunk edgerunners
-  \033[1;32m%s:\033[0m jjk -e 5-6 -S 1 --dub
+  \033[1;32m%s\033[0m -q 720p banana fish
+  \033[1;32m%s\033[0m -d -e 2 cyberpunk edgerunners
+  \033[1;32m%s\033[0m jjk -e 5-6 -S 1 --dub
   \n" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}"
 	exit 0
 }
