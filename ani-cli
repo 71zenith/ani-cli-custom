@@ -5,7 +5,7 @@ version_number="4.7custom"
 # UI
 launcher() {
 	[ -z "$1" ] && set -- "--limit=0" "$2"
-	gum filter "$1" --height="$(($(tput lines) * 3 / 4))" --placeholder="$2"
+	gum filter "$1" --height="$(($(tput lines) * 3 / 4))" --cursor-text.background=240 --placeholder="$2"
 }
 
 nth() {
