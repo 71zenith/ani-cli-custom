@@ -37,8 +37,8 @@ help_info() {
         Continue watching from history
       -d, --download
         Download the video instead of playing it
-      -D, --delete
-        Delete history
+      -D, --debug
+        Print links to the terminal
       -S, --select-nth
         Select nth entry
       -q, --quality
@@ -51,6 +51,8 @@ help_info() {
         Specify the number of episodes to watch
       --dub
         Play dubbed version
+      -s, --skip
+        Skips intro and outro
       -U, --update
         Update the script
     Some example usages:
@@ -141,8 +143,6 @@ generate_link() {
         2) provider_init "dropbox" "/Sak :/p" ;;       # dropbox(mp4)(single)
         3) provider_init "wetransfer" "/Kir :/p" ;;    # wetransfer(mp4)(single)
         4) provider_init "sharepoint" "/S-mp4 :/p" ;;  # sharepoint(mp4)(single)
-        5) provider_init "ak" "/Ak :/p" ;;             # ak(mp4?)(single?)
-        6) provider_init "vidstream" "/Vid-Mp4 :/p" ;; # vidstream(mp4?)(single?)
         *) provider_init "gogoanime" "/Luf-mp4 :/p" ;; # gogoanime(m3u8)(multi)
     esac
     provider_id="$(decrypt_allanime "$provider_id" | sed "s/\/clock/\/clock\.json/")"
@@ -222,12 +222,14 @@ download() {
 
 play_episode() {
     [ -z "$episode" ] && get_episode_url
+    [ "$skip_intro" = 1 ] && [ "$player_function" != "download" ] && [ "$player_function" != "debug" ] && [ -z "$skip_flag" ] && skip_flag="$(ani-skip -s "$mal_id" "$ep_no")"
+    # shellcheck disable=SC2086
     case "$player_function" in
         debug)
-            printf "All links:\n%s\nSelected link:\n" "$links"
+            printf "\033[1;34mAll links:\033[0m\n%s\n\033[1;34mSelected link:\033[0m\n" "$links"
             printf "%s\n" "$episode"
             ;;
-        mpv*) nohup "$player_function" --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
+        mpv*) nohup "$player_function" $skip_flag --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
         download) "$player_function" "$episode" "${allanime_title}Episode ${ep_no}" ;;
         *) nohup "$player_function" "$episode" >/dev/null 2>&1 & ;;
     esac
@@ -271,6 +273,7 @@ mode="${ANI_CLI_MODE:-sub}"
 download_dir="${ANI_CLI_DOWNLOAD_DIR:-.}"
 quality="${ANI_CLI_QUALITY:-best}"
 player_function="${ANI_CLI_PLAYER:-mpv}"
+skip_intro="${ANI_CLI_SKIP_INTRO:-0}"
 
 hist_dir="${ANI_CLI_HIST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/ani-cli}"
 [ ! -d "$hist_dir" ] && mkdir -p "$hist_dir"
@@ -292,11 +295,9 @@ while [ $# -gt 0 ]; do
             ;;
         -c | --continue) search=history ;;
         -d | --download) player_function=download ;;
-        -D | --delete)
-            : >"$histfile"
-            exit 0
-            ;;
+        -D | --debug) player_function=debug ;;
         -V | --version) version_info ;;
+        -s | --skip) skip_intro=1 ;;
         -h | --help) help_info ;;
         -e | --episode | -r | --range)
             [ $# -lt 2 ] && die "missing argument!"
@@ -311,6 +312,7 @@ while [ $# -gt 0 ]; do
 done
 multi_selection_flag="${ANI_CLI_MULTI_SELECTION:-"--limit=2"}"
 dep_ch "curl" "sed" "grep" "gum" || true
+[ "$skip_intro" = 1 ] && (dep_ch "ani-skip" || true)
 case "$player_function" in
     debug) ;;
     download) dep_ch "yt-dlp" "aria2c" ;;
@@ -331,10 +333,12 @@ case "$search" in
         ep_list=$(episodes_list "$id")
         ep_no=$(printf "%s" "$ep_list" | sed -n "/^${ep_no}$/{n;p;}") 2>/dev/null
         allanime_title="$(printf "%s" "$title" | cut -d'(' -f1 | tr -d '[:punct:]')"
+        skip_flag="$(ani-skip -o "$allanime_title" "$ep_no")"
         ;;
     *)
         while [ -z "$query" ]; do
-            printf "\33[2K\r\033[1;36mSearch anime: \033[0m" && read -r query
+            query=$(gum input --placeholder "Search Anime")
+            [ "$?" = 130 ] && exit 1
         done
         query=$(printf "%s" "$query" | sed "s| |+|g")
         anime_list=$(search_anime "$query")
@@ -345,6 +349,7 @@ case "$search" in
         title=$(printf "%s" "$result" | cut -f2)
         allanime_title="$(printf "%s" "$title" | cut -d'(' -f1 | tr -d '[:punct:]')"
         id=$(printf "%s" "$result" | cut -f1)
+        [ "$player_function" != "download" ] && [ "$player_function" != "debug" ] && mal_id=$(ani-skip -a "$allanime_title")
         ep_list=$(episodes_list "$id")
         [ -z "$ep_no" ] && ep_no=$(printf "%s" "$ep_list" | nth "Select episode" "$multi_selection_flag")
         [ -z "$ep_no" ] && exit 1
