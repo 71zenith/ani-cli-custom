@@ -225,8 +225,8 @@ download() {
 }
 
 play_episode() {
-	[ -z "$episode" ] && get_episode_url
 	[ "$skip_intro" = 1 ] && [ "$player_function" != "download" ] && [ "$player_function" != "debug" ] && [ -z "$skip_flag" ] && skip_flag="$(ani-skip -s "$mal_id" "$ep_no")"
+	[ -z "$episode" ] && get_episode_url
 	# shellcheck disable=SC2086
 	case "$player_function" in
 	debug)
