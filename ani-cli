@@ -72,7 +72,7 @@ update_script() {
 	update="$(curl -s -A "$agent" "https://raw.githubusercontent.com/71zenith/ani-cli-custom/master/ani-cli")" || die "Connection error"
 	update="$(printf '%s\n' "$update" | diff -u "$0" -)"
 	if [ -z "$update" ]; then
-		printf "Script is up to date :)\n"
+		printf "\033[1;34mScript is up to date :)\033[0m\n"
 	else
 		if printf '%s\n' "$update" | patch "$0" -; then
 			printf "\033[1;34mScript has been updated\033[0m\n"
