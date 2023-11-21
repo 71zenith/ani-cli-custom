@@ -25,6 +25,11 @@ die() {
 	exit 1
 }
 
+info() {
+	printf "\33[2K\r\033[1;34m%s\033[0m\n" "$*" >&2
+	exit 0
+}
+
 help_info() {
 	printf "
     Usage:
@@ -64,23 +69,22 @@ help_info() {
 }
 
 version_info() {
-	printf "\033[1;34mVersion Number: %s\033[0m\n" "$version_number"
-	exit 0
+	#printf "\033[1;34mVersion Number: %s\033[0m\n" "$version_number"
+	info "Version Number: $version_number"
 }
 
 update_script() {
 	update="$(curl -s -A "$agent" "https://raw.githubusercontent.com/71zenith/ani-cli-custom/master/ani-cli")" || die "Connection error"
 	update="$(printf '%s\n' "$update" | diff -u "$0" -)"
 	if [ -z "$update" ]; then
-		printf "\033[1;34mScript is up to date :)\033[0m\n"
+		info "Script is up to date :)"
 	else
 		if printf '%s\n' "$update" | patch "$0" -; then
-			printf "\033[1;34mScript has been updated\033[0m\n"
+			info "Script has been updated"
 		else
 			die "Can't update for some reason!"
 		fi
 	fi
-	exit 0
 }
 
 # checks if dependencies are present
@@ -153,7 +157,7 @@ select_quality() {
 	worst) result=$(printf "%s" "$links" | grep -E '^[0-9]{3,4}' | tail -n1) ;;
 	*) result=$(printf "%s" "$links" | grep -m 1 "$1") ;;
 	esac
-	[ -z "$result" ] && printf "\033[1;31mSpecified quality not found, defaulting to best\033[0m\n" 1>&2 && result=$(printf "%s" "$links" | head -n1)
+	[ -z "$result" ] && printf "\033[1;32mSpecified quality not found, defaulting to best\033[0m\n" 1>&2 && result=$(printf "%s" "$links" | head -n1)
 	printf "%s" "$result" | cut -d'>' -f2
 }
 
