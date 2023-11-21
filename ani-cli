@@ -1,17 +1,11 @@
 #!/bin/sh
 
-version_number="4.6.2"
+version_number="4.7custom"
 
 # UI
-
-external_menu() {
-    rofi "$1" -sort -dmenu -i -width 1500 -p "$2"
-}
-
 launcher() {
-    [ "$use_external_menu" = "0" ] && [ -z "$1" ] && set -- "+m" "$2"
-    [ "$use_external_menu" = "0" ] && fzf "$1" --reverse --cycle --prompt "$2"
-    [ "$use_external_menu" = "1" ] && external_menu "$1" "$2"
+    [ -z "$1" ] && set -- "--limit=0" "$2"
+    gum filter "$1" --height=20 --placeholder="$2"
 }
 
 nth() {
@@ -45,14 +39,10 @@ help_info() {
         Download the video instead of playing it
       -D, --delete
         Delete history
-      -s, --syncplay
-        Use Syncplay to watch with friends
       -S, --select-nth
         Select nth entry
       -q, --quality
         Specify the video quality
-      -v, --vlc
-        Use VLC to play the video
       -V, --version
         Show the version of the script
       -h, --help
@@ -61,8 +51,6 @@ help_info() {
         Specify the number of episodes to watch
       --dub
         Play dubbed version
-      --rofi
-        Use rofi instead of fzf for the interactive menu
       -U, --update
         Update the script
     Some example usages:
@@ -125,7 +113,7 @@ get_links() {
             ;;
         *) [ -n "$episode_link" ] && printf "%s\n" "$episode_link" ;;
     esac
-    [ -z "$ANI_CLI_NON_INTERACTIVE" ] && printf "\033[1;32m%s\033[0m Links Fetched\n" "$provider_name" 1>&2
+    printf "\033[1;32m%s ✔\033[0m\n" "$provider_name" 1>&2
 }
 
 # innitialises provider_name and provider_id. First argument is the provider name, 2nd is the regex that matches that provider's link
@@ -153,6 +141,8 @@ generate_link() {
         2) provider_init "dropbox" "/Sak :/p" ;;       # dropbox(mp4)(single)
         3) provider_init "wetransfer" "/Kir :/p" ;;    # wetransfer(mp4)(single)
         4) provider_init "sharepoint" "/S-mp4 :/p" ;;  # sharepoint(mp4)(single)
+        5) provider_init "ak" "/Ak :/p" ;;             # ak(mp4?)(single?)
+        6) provider_init "vidstream" "/Vid-Mp4 :/p" ;; # vidstream(mp4?)(single?)
         *) provider_init "gogoanime" "/Luf-mp4 :/p" ;; # gogoanime(m3u8)(multi)
     esac
     provider_id="$(decrypt_allanime "$provider_id" | sed "s/\/clock/\/clock\.json/")"
@@ -224,15 +214,9 @@ update_history() {
 download() {
     case $1 in
         *m3u8*)
-            if command -v "yt-dlp" >/dev/null; then
-                yt-dlp "$1" --no-skip-unavailable-fragments --fragment-retries infinite -N 16 -o "$download_dir/$2.mp4"
-            else
-                ffmpeg -loglevel error -stats -i "$1" -c copy "$download_dir/$2.mp4"
-            fi
-            ;;
+            yt-dlp "$1" --no-skip-unavailable-fragments --fragment-retries infinite -N 16 -o "$download_dir/$2.mp4" ;;
         *)
-            aria2c --enable-rpc=false --check-certificate=false --continue --summary-interval=0 -x 16 -s 16 "$1" --dir="$download_dir" -o "$2.mp4" --download-result=hide
-            ;;
+            aria2c --enable-rpc=false --check-certificate=false --continue --summary-interval=0 -x 16 -s 16 "$1" --dir="$download_dir" -o "$2.mp4" --download-result=hide ;;
     esac
 }
 
@@ -240,28 +224,16 @@ play_episode() {
     [ -z "$episode" ] && get_episode_url
     case "$player_function" in
         debug)
-            [ -z "$ANI_CLI_NON_INTERACTIVE" ] && printf "All links:\n%s\nSelected link:\n" "$links"
+            printf "All links:\n%s\nSelected link:\n" "$links"
             printf "%s\n" "$episode"
             ;;
         mpv*) nohup "$player_function" --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
-        android_mpv) nohup am start --user 0 -a android.intent.action.VIEW -d "$episode" -n is.xyz.mpv/.MPVActivity >/dev/null 2>&1 & ;;
-        android_vlc) nohup am start --user 0 -a android.intent.action.VIEW -d "$episode" -n org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity -e "title" "${allanime_title}Episode ${ep_no}" >/dev/null 2>&1 & ;;
-        iina) nohup "$player_function" --no-stdin --keep-running --mpv-force-media-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
-        flatpak_mpv) flatpak run io.mpv.Mpv --force-media-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
-        vlc*) nohup "$player_function" --play-and-exit --meta-title="${allanime_title}Episode ${ep_no}" "$episode" >/dev/null 2>&1 & ;;
-        *yncpla*) nohup "$player_function" "$episode" -- --force-media-title="${allanime_title}Episode ${ep_no}" >/dev/null 2>&1 & ;;
         download) "$player_function" "$episode" "${allanime_title}Episode ${ep_no}" ;;
-        catt) nohup catt cast "$episode" >/dev/null 2>&1 & ;;
-        iSH)
-            printf "\e]8;;vlc://%s\a~~~~~~~~~~~~~~~~~~~~\n~ Tap to open VLC ~\n~~~~~~~~~~~~~~~~~~~~\e]8;;\a\n" "$episode"
-            sleep 5
-            ;;
         *) nohup "$player_function" "$episode" >/dev/null 2>&1 & ;;
     esac
     replay="$episode"
     unset episode
     update_history
-    [ "$use_external_menu" = "1" ] && wait
 }
 
 play() {
@@ -298,17 +270,8 @@ allanime_api="https://api.allanime.day"
 mode="${ANI_CLI_MODE:-sub}"
 download_dir="${ANI_CLI_DOWNLOAD_DIR:-.}"
 quality="${ANI_CLI_QUALITY:-best}"
-case "$(uname -a)" in
-    *Darwin*) player_function="${ANI_CLI_PLAYER:-iina}" ;;            # mac OS
-    *ndroid*) player_function="${ANI_CLI_PLAYER:-android_mpv}" ;;     # Android OS (termux)
-    *steamdeck*) player_function="${ANI_CLI_PLAYER:-flatpak_mpv}" ;;  # steamdeck OS
-    *MINGW* | *WSL2*) player_function="${ANI_CLI_PLAYER:-mpv.exe}" ;; # Windows OS
-    *ish*) player_function="${ANI_CLI_PLAYER:-iSH}" ;;                # iOS (iSH)
-    *) player_function="${ANI_CLI_PLAYER:-mpv}" ;;                    # Linux OS
-esac
+player_function="${ANI_CLI_PLAYER:-mpv}"
 
-use_external_menu="${ANI_CLI_EXTERNAL_MENU:-0}"
-[ -t 0 ] || use_external_menu=1
 hist_dir="${ANI_CLI_HIST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/ani-cli}"
 [ ! -d "$hist_dir" ] && mkdir -p "$hist_dir"
 histfile="$hist_dir/ani-hsts"
@@ -317,24 +280,6 @@ search="${ANI_CLI_DEFAULT_SOURCE:-scrape}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -v | --vlc)
-            case "$(uname -a)" in
-                *ndroid*) player_function="android_vlc" ;;
-                MINGW* | *WSL2*) player_function="vlc.exe" ;;
-                *ish*) player_function="iSH" ;;
-                *) player_function="vlc" ;;
-            esac
-            ;;
-        -s | --syncplay)
-            case "$(uname -s)" in
-                Darwin*) player_function="/Applications/Syncplay.app/Contents/MacOS/syncplay" ;;
-                MINGW* | *Msys)
-                    export PATH="$PATH":"/c/Program Files (x86)/Syncplay/"
-                    player_function="syncplay.exe"
-                    ;;
-                *) player_function="syncplay" ;;
-            esac
-            ;;
         -q | --quality)
             [ $# -lt 2 ] && die "missing argument!"
             quality="$2"
@@ -356,30 +301,19 @@ while [ $# -gt 0 ]; do
         -e | --episode | -r | --range)
             [ $# -lt 2 ] && die "missing argument!"
             ep_no="$2"
-            [ -n "$index" ] && ANI_CLI_NON_INTERACTIVE=1 #Checks for -S presence
             shift
             ;;
         --dub) mode="dub" ;;
-        --rofi) use_external_menu=1 ;;
         -U | --update) update_script ;;
         *) query="$(printf "%s" "$query $1" | sed "s|^ ||;s| |+|g")" ;;
     esac
     shift
 done
-[ "$use_external_menu" = "0" ] && multi_selection_flag="${ANI_CLI_MULTI_SELECTION:-"-m"}"
-[ "$use_external_menu" = "1" ] && multi_selection_flag="${ANI_CLI_MULTI_SELECTION:-"-multi-select"}"
-printf "\33[2K\r\033[1;34mChecking dependencies...\033\n[0m"
-dep_ch "curl" "sed" "grep" || true
-if [ -z "$ANI_CLI_NON_INTERACTIVE" ]; then dep_ch fzf || true; fi
+multi_selection_flag="${ANI_CLI_MULTI_SELECTION:-"--limit=2"}"
+dep_ch "curl" "sed" "grep" "gum" || true
 case "$player_function" in
     debug) ;;
-    download) dep_ch "ffmpeg" "aria2c" ;;
-    flatpak*)
-        dep_ch "flatpak"
-        flatpak info io.mpv.Mpv >/dev/null 2>&1 || die "Program \"mpv (flatpak)\" not found. Please install it."
-        ;;
-    android*) printf "\33[2K\rChecking of players on Android is disabled\n" ;;
-    *iSH*) printf "\33[2K\rChecking of players on iOS is disabled\n" ;;
+    download) dep_ch "yt-dlp" "aria2c" ;;
     *) dep_ch "$player_function" ;;
 esac
 
@@ -389,7 +323,7 @@ case "$search" in
         anime_list=$(while read -r ep_no id title; do process_hist_entry & done <"$histfile")
         wait
         [ -z "$anime_list" ] && die "No unwatched series in history!"
-        result=$(printf "%s" "$anime_list" | nl -w 2 | sed 's/^[[:space:]]//' | nth "Select anime: " | cut -f1)
+        result=$(printf "%s" "$anime_list" | nl -w 2 | sed 's/^[[:space:]]//' | nth "Select anime" | cut -f1)
         [ -z "$result" ] && exit 1
         resfile="$(mktemp)"
         grep "$result" "$histfile" >"$resfile"
@@ -399,31 +333,26 @@ case "$search" in
         allanime_title="$(printf "%s" "$title" | cut -d'(' -f1 | tr -d '[:punct:]')"
         ;;
     *)
-        if [ "$use_external_menu" = "0" ]; then
-            while [ -z "$query" ]; do
-                printf "\33[2K\r\033[1;36mSearch anime: \033[0m" && read -r query
-            done
-        else
-            [ -z "$query" ] && query=$(printf "" | external_menu "" "Search anime: ")
-            [ -z "$query" ] && exit 1
-        fi
+        while [ -z "$query" ]; do
+            printf "\33[2K\r\033[1;36mSearch anime: \033[0m" && read -r query
+        done
         query=$(printf "%s" "$query" | sed "s| |+|g")
         anime_list=$(search_anime "$query")
         [ -z "$anime_list" ] && die "No results found!"
         [ "$index" -eq "$index" ] 2>/dev/null && result=$(printf "%s" "$anime_list" | sed -n "${index}p")
-        [ -z "$index" ] && result=$(printf "%s" "$anime_list" | nl -w 2 | sed 's/^[[:space:]]//' | nth "Select anime: ")
+        [ -z "$index" ] && result=$(printf "%s" "$anime_list" | nl -w 2 | sed 's/^[[:space:]]//' | nth "Select anime")
         [ -z "$result" ] && exit 1
         title=$(printf "%s" "$result" | cut -f2)
         allanime_title="$(printf "%s" "$title" | cut -d'(' -f1 | tr -d '[:punct:]')"
         id=$(printf "%s" "$result" | cut -f1)
         ep_list=$(episodes_list "$id")
-        [ -z "$ep_no" ] && ep_no=$(printf "%s" "$ep_list" | nth "Select episode: " "$multi_selection_flag")
+        [ -z "$ep_no" ] && ep_no=$(printf "%s" "$ep_list" | nth "Select episode" "$multi_selection_flag")
         [ -z "$ep_no" ] && exit 1
         ;;
 esac
 
 # moves the cursor up one line and clears that line
-tput cuu1 && tput el
+# tput cuu1 && tput el
 # stores the positon of cursor
 tput sc
 
@@ -438,7 +367,7 @@ while cmd=$(printf "next\nreplay\nprevious\nselect\nchange_quality\nquit" | nth 
         previous) ep_no=$(printf "%s" "$ep_list" | sed -n "/^${ep_no}$/{g;1!p;};h") 2>/dev/null ;;
         select) ep_no=$(printf "%s" "$ep_list" | nth "Select episode: " "$multi_selection_flag") ;;
         change_quality)
-            episode=$(printf "%s" "$links" | launcher)
+            episode=$(printf "%s" "$links" | nth "Select quality")
             quality=$(printf "%s" "$episode" | grep -oE "^[0-9]+")
             episode=$(printf "%s" "$episode" | cut -d'>' -f2)
             ;;
